@@ -323,5 +323,5 @@ def cli():
         response = process_command(command)
         print(response)
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     cli()
