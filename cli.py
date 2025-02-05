@@ -1,35 +1,52 @@
 import os
 import json
+import shutil
 
-DB_FILE = "storage.json"
+DB_FOLDER = "databases"
+os.makedirs(DB_FOLDER, exist_ok=True)
 
-# Load existing database or create an empty one
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, "r") as f:
-        try:
-            database = json.load(f)
-        except json.JSONDecodeError:
-            database = {}
-else:
-    database = {}
-
-# Initialize auto-increment ID tracking
+current_db = None
+current_db_file = None
 _id_counter = {}
 
-# Ensure existing tables have proper ID tracking
-for table_name, records in database.items():
-    if records:
-        max_id = max(record.get("id", 0) for record in records)
+def load_db(db_name):
+    global current_db, current_db_file
+    db_path = os.path.join(DB_FOLDER, db_name, "storage.json")
+    
+    if os.path.exists(db_path):
+        with open(db_path, "r") as f:
+            try:
+                current_db = json.load(f)
+            except json.JSONDecodeError:
+                current_db = {}
     else:
-        max_id = 0
-    _id_counter[table_name] = max_id
+        current_db = {}
+    
+    current_db_file = db_path
+    update_id_counter()  # Update the ID counter after loading the DB
+
+def update_id_counter():
+    """Update the _id_counter for each table in the current database."""
+    global _id_counter
+    
+    if current_db is not None:
+        for table_name, records in current_db.items():
+            if records:
+                # Get the maximum ID from the records, default to 0 if none
+                max_id = max(record.get("id", 0) for record in records)
+            else:
+                max_id = 0
+            _id_counter[table_name] = max_id
 
 def save_db():
-    """Save the database to a JSON file."""
-    with open(DB_FILE, "w") as f:
-        json.dump(database, f, indent=4)
+    """Save the database to the current database's JSON file."""
+    if current_db_file:
+        with open(current_db_file, "w") as f:
+            json.dump(current_db, f, indent=4)
 
 def process_command(command):
+    global current_db, current_db_file
+    
     tokens = command.strip().split()
 
     # Remove the semicolon if present at the end of the command
@@ -40,15 +57,82 @@ def process_command(command):
         return "Invalid command."
 
     action = tokens[0].lower()
+    
+    if action == "show" and len(tokens) == 2 and tokens[1].lower() == "databases":
+        # List all the databases present in the DB_FOLDER
+        databases = [db for db in os.listdir(DB_FOLDER) if os.path.isdir(os.path.join(DB_FOLDER, db))]
+        if databases:
+            return "Databases: " + ", ".join(databases)
+        else:
+            return "No databases found."
+    
+    elif action == "create" and len(tokens) == 3 and tokens[1].lower() == "database":
+        db_name = tokens[2]
+        db_path = os.path.join(DB_FOLDER, db_name)
+        
+        if os.path.exists(db_path):
+            return f"Database '{db_name}' already exists."
+        
+        os.makedirs(db_path)
+        # Initialize an empty storage file for the new database
+        with open(os.path.join(db_path, "storage.json"), "w") as f:
+            json.dump({}, f)
+        
+        return f"Database '{db_name}' created successfully"
+    
+    elif action == "use" and len(tokens) == 2:
+        db_name = tokens[1]
+        db_path = os.path.join(DB_FOLDER, db_name)
+        
+        if not os.path.exists(db_path):
+            return f"Database '{db_name}' does not exist."
+        else:
+            load_db(db_name)
+            return f"Using database '{db_name}'"
+        
+    elif action == "exit" and len(tokens) == 2:
+        db_name = tokens[1]
 
-    if action == "create":
-        if len(tokens) < 2:
-            return "Syntax error. Usage: CREATE table_name;"
+        if current_db is None:
+            return "No database is currently in use."
+
+        db_path = os.path.join(DB_FOLDER, db_name)
+        if not os.path.exists(db_path):
+            return f"Database '{db_name}' does not exist."
+
+        if current_db_file and db_name in current_db_file:
+            save_db()  # Save changes before exiting
+            current_db_file = None
+            current_db = None
+            return f"Exited from database '{db_name}'. You can now use another database."
+        else:
+            return f"Database '{db_name}' is not currently in use."
+        
+
+    elif action == "remove" and len(tokens) == 2:
+        db_name = tokens[1]
+        db_path = os.path.join(DB_FOLDER, db_name)
+        
+        if not os.path.exists(db_path):
+            return f"Database '{db_name}' does not exist."
+        
+        shutil.rmtree(db_path)  # Deletes the entire database folder
+        if current_db_file and db_name in current_db_file:
+            current_db_file = None
+            current_db = None
+
+        return f"Database '{db_name}' deleted successfully."
+
+
+    elif action == "make" and len(tokens) >= 2:
+        if current_db is None:
+            return "No database selected. Use 'USE database_name' to select a database."
+
         table_name = tokens[1]
-        if table_name in database:
+        if table_name in current_db:
             return f"Table '{table_name}' already exists."
-        database[table_name] = []
-        _id_counter[table_name] = 0  # Initialize ID counter
+        current_db[table_name] = []
+        _id_counter[table_name] = 0  # Initialize ID counter for the table
         save_db()
         return f"Table '{table_name}' created successfully."
 
@@ -63,12 +147,12 @@ def process_command(command):
             data = data.strip()
             record = json.loads(f"{{{data}}}")
 
-            if table_name in database:
+            if table_name in current_db:
                 # Auto-increment ID
                 _id_counter[table_name] += 1
                 record["id"] = _id_counter[table_name]
 
-                database[table_name].append(record)
+                current_db[table_name].append(record)
                 save_db()
                 return f"Record inserted into '{table_name}' with ID {record['id']}."
             else:
@@ -110,8 +194,8 @@ def process_command(command):
 
         fields = [field.strip() for field in " ".join(fields).split(",") if field.strip()]
 
-        if table_name in database:
-            result = database[table_name]
+        if table_name in current_db:
+            result = current_db[table_name]
 
             # Apply WHERE condition if exists
             if condition_clause:
@@ -151,44 +235,45 @@ def process_command(command):
         set_index = tokens.index("set")
         where_index = tokens.index("where")
 
-    # Extract the SET clause and WHERE clause
+        # Extract the SET clause and WHERE clause
         set_clause = " ".join(tokens[set_index + 1:where_index])
         where_clause = " ".join(tokens[where_index + 1:])
 
         if "=" not in set_clause or "=" not in where_clause:
             return "Syntax error in SET or WHERE clause."
 
-    # Split the SET clause into field_name and new_value
+        # Split the SET clause into field_name and new_value
         field_name, new_value = set_clause.split("=")
         field_name = field_name.strip()
-        new_value = new_value.strip().strip("'")
+        new_value = new_value.strip().strip('"')
 
-    # Split the WHERE clause into condition_field and condition_value
+        # Split the WHERE clause into condition_field and condition_value
         condition_field, condition_value = where_clause.split("=")
         condition_field = condition_field.strip()
-        condition_value = condition_value.strip().strip("'")
+        condition_value = condition_value.strip().strip('"')
 
-        if table_name in database:
-            updated = False
-            for record in database[table_name]:
+        if table_name in current_db:
+            modified_count = 0  # Initialize the counter
+            for record in current_db[table_name]:
                 if str(record.get(condition_field)) == condition_value:
-                # Convert the new value to the correct type
+                    # Convert the new value to the correct type
                     if isinstance(record.get(field_name), int):
                         new_value = int(new_value)
                     elif isinstance(record.get(field_name), float):
                         new_value = float(new_value)
 
-                # Update the record
+                    # Update the record
                     record[field_name] = new_value
-                    updated = True
+                    modified_count += 1  # Increment the counter
 
-            if updated:
+            if modified_count > 0:
                 save_db()
-                return f"Record(s) updated in '{table_name}'."
+                return f"{modified_count} record(s) updated in '{table_name}'."
             else:
                 return "No records matched the condition."
         else:
             return f"Table '{table_name}' does not exist."
+
 
 
     elif action == "void":
@@ -200,11 +285,11 @@ def process_command(command):
             table_name = tokens[1]
 
             # Ensure table exists
-            if table_name not in database:
+            if table_name not in current_db:
                 return f"Table '{table_name}' does not exist."
 
             # Delete the entire table
-            del database[table_name]
+            del current_db[table_name]
             save_db()
             return f"Table '{table_name}' has been voided."
 
@@ -216,12 +301,12 @@ def process_command(command):
             table_name = tokens[2]
 
             # Ensure table exists
-            if table_name not in database:
+            if table_name not in current_db:
                 return f"Table '{table_name}' does not exist."
 
             # Case 2a: Void all records from the table (No WHERE Clause)
             if len(tokens) == 3:
-                database[table_name] = []  # Clear all records but keep the table
+                current_db[table_name] = []  # Clear all records but keep the table
                 save_db()
                 return f"All records voided from '{table_name}'."
 
@@ -237,7 +322,7 @@ def process_command(command):
                 condition_value = condition_value.strip().strip("'")
 
                 # Convert condition value type if necessary
-                for record in database[table_name]:
+                for record in current_db[table_name]:
                     if condition_field in record:
                         if isinstance(record[condition_field], int):
                             condition_value = int(condition_value)
@@ -246,13 +331,13 @@ def process_command(command):
                         break  # Stop checking after the first record
 
                 # Remove matching records
-                original_count = len(database[table_name])
-                database[table_name] = [record for record in database[table_name] if record.get(condition_field) != condition_value]
+                original_count = len(current_db[table_name])
+                current_db[table_name] = [record for record in current_db[table_name] if record.get(condition_field) != condition_value]
 
                 # Save and return response
-                if len(database[table_name]) < original_count:
+                if len(current_db[table_name]) < original_count:
                     save_db()
-                    return f"Voided {original_count - len(database[table_name])} record(s) from '{table_name}'."
+                    return f"Voided {original_count - len(current_db[table_name])} record(s) from '{table_name}'."
                 else:
                     return "No matching records found."
 
@@ -275,11 +360,11 @@ def process_command(command):
         condition_field = condition_field.strip()
         condition_value = condition_value.strip().strip("'")
 
-        if table_name in database:
+        if table_name in current_db:
             modified_count = 0  # Count of records modified
 
             # Type conversion for numerical fields
-            for record in database[table_name]:
+            for record in current_db[table_name]:
                 if condition_field in record:
                     if isinstance(record[condition_field], int):
                         condition_value = int(condition_value)
@@ -291,28 +376,48 @@ def process_command(command):
             if len(tokens) > 4:
                 field_name = tokens[1]  # Specific field to delete
                 # Deleting specific field
-                for record in database[table_name]:
+                for record in current_db[table_name]:
                     if record.get(condition_field) == condition_value:
                         if field_name in record:
                             del record[field_name]
                             modified_count += 1
             else:
                 # Deleting the entire record
-                for record in database[table_name]:
+                for record in current_db[table_name]:
                     if record.get(condition_field) == condition_value:
-                        database[table_name].remove(record)
+                        current_db[table_name].remove(record)
                         modified_count += 1
                         break  # Stop after removing the first matching record
+                    
+    elif action == "count":
+        if len(tokens) < 2:
+            return "Syntax error. Usage: COUNT table_name;"
+
+        table_name = tokens[1]
+
+        if table_name in current_db:
+            record_count = len(current_db[table_name])
+            return f"Table '{table_name}' contains {record_count} record(s)."
+        else:
+            return f"Table '{table_name}' does not exist."
+        
+    elif action == "show" and len(tokens) == 2 and tokens[1].lower() == "tables":
+    # Show all table names
+        if current_db:
+            table_names = list(current_db.keys())
+            return f"Tables: {', '.join(table_names)}"
+        else:
+            return "No tables found."
 
             # Save if any records were modified
-            if modified_count > 0:
-                save_db()
-                if len(tokens) > 4:
-                    return f"Deleted field '{field_name}' from {modified_count} record(s) in '{table_name}'."
-                else:
-                    return f"Deleted {modified_count} record(s) from '{table_name}'."
-            else:
-                return "No records matched the condition or field not found."
+    if modified_count > 0:
+        save_db()
+        if len(tokens) > 4:
+            return f"Deleted field '{field_name}' from {modified_count} record(s) in '{table_name}'."
+        else:
+            return f"Deleted {modified_count} record(s) from '{table_name}'."
+    else:
+        return "No records matched the condition or field not found."
 
 def cli():
     print("SimpleDB CLI. Type 'exit' to quit.")

@@ -1,7 +1,22 @@
-//table creation
-create table_name
+//database creation
+create database_name
 //example
-create users
+create mydb
+
+//accessing database
+use database_name
+//example
+use mydb   
+
+//exiting the current database
+exit database_name
+//example
+exit mydb
+
+//table creation
+make table_name
+//example
+make users
 
 //data insertion 
 insert table_name {"key":"value"}
@@ -34,4 +49,13 @@ void users
 update table_name set field_name = new_value where condition
 //example
 update users set name = "Bob" where age=30
+
+//count
+count table_name
+//example
+count users
+
+//exiting the simpledb
+exit
+
 
