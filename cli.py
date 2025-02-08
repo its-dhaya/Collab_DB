@@ -136,29 +136,44 @@ def process_command(command):
         save_db()
         return f"Table '{table_name}' created successfully."
 
-    elif action == "insert":
+    elif action == "include":
         if len(tokens) < 3:
-            return "Syntax error. Usage: INSERT table_name {data};"
+            return "Syntax error. Usage: INCLUDE table_name [{data1}, {data2}, ...];"
+        
         table_name = tokens[1]
-        data = command.split("{", 1)[-1].split("}", 1)[0]
+        data_block = command.split("[", 1)[-1].split("]", 1)[0]  # Extract data inside [ ... ]
+
         try:
-            if not data:
+            if not data_block.strip():
                 return "Empty data provided."
-            data = data.strip()
-            record = json.loads(f"{{{data}}}")
+
+            records = json.loads(f"[{data_block}]")  # Convert to a list of dictionaries
+
+            if not isinstance(records, list):
+                return "Invalid format. Expected an array of JSON objects."
 
             if table_name in current_db:
-                # Auto-increment ID
-                _id_counter[table_name] += 1
-                record["id"] = _id_counter[table_name]
+                inserted_ids = []
 
-                current_db[table_name].append(record)
+                for record in records:
+                    if isinstance(record, dict):  
+                        # Auto-increment ID
+                        _id_counter[table_name] += 1
+                        record["id"] = _id_counter[table_name]
+
+                        current_db[table_name].append(record)
+                        inserted_ids.append(record["id"])
+                    else:
+                        return "Invalid data format. Each entry should be a JSON object."
+
                 save_db()
-                return f"Record inserted into '{table_name}' with ID {record['id']}."
+                return f"{len(inserted_ids)} records included into '{table_name}' with IDs {inserted_ids}."
             else:
                 return f"Table '{table_name}' does not exist."
         except json.JSONDecodeError as e:
             return f"Invalid JSON format: {e}"
+
+
 
     elif action == "select":
         if len(tokens) < 2:
@@ -276,72 +291,73 @@ def process_command(command):
 
 
 
-    elif action == "void":
-        if len(tokens) < 2:
-            return "Syntax error. Usage: VOID table_name; OR VOID FROM table_name WHERE condition;"
+    elif action == "exclude":
+            if len(tokens) < 2:
+                return "Syntax error. Usage: EXCLUDE table_name; OR EXCLUDE FROM table_name WHERE condition;"
 
-        # Case 1: Void the entire table (Delete table itself)
-        if len(tokens) == 2:
-            table_name = tokens[1]
+            # Case 1: Exclude the entire table (Delete table itself)
+            if len(tokens) == 2:
+                table_name = tokens[1]
 
-            # Ensure table exists
-            if table_name not in current_db:
-                return f"Table '{table_name}' does not exist."
+                # Ensure table exists
+                if table_name not in current_db:
+                    return f"Table '{table_name}' does not exist."
 
-            # Delete the entire table
-            del current_db[table_name]
-            save_db()
-            return f"Table '{table_name}' has been voided."
-
-        # Case 2: Void records from a table (Must include 'FROM')
-        if tokens[1].lower() == "from":
-            if len(tokens) < 3:
-                return "Syntax error. Usage: VOID FROM table_name; OR VOID FROM table_name WHERE condition;"
-
-            table_name = tokens[2]
-
-            # Ensure table exists
-            if table_name not in current_db:
-                return f"Table '{table_name}' does not exist."
-
-            # Case 2a: Void all records from the table (No WHERE Clause)
-            if len(tokens) == 3:
-                current_db[table_name] = []  # Clear all records but keep the table
+                # Delete the entire table
+                del current_db[table_name]
                 save_db()
-                return f"All records voided from '{table_name}'."
+                return f"Table '{table_name}' has been excluded."
 
-            # Case 2b: Void specific records using WHERE condition
-            if len(tokens) > 3 and tokens[3].lower() == "where":
-                if len(tokens) < 6 or "=" not in " ".join(tokens[4:]):
-                    return "Syntax error in WHERE clause. Expected format: VOID FROM table_name WHERE field = value;"
+            # Case 2: Exclude records from a table (Must include 'FROM')
+            if tokens[1].lower() == "from":
+                if len(tokens) < 3:
+                    return "Syntax error. Usage: EXCLUDE FROM table_name; OR EXCLUDE FROM table_name WHERE condition;"
 
-                # Extract condition clause
-                condition_clause = " ".join(tokens[4:])
-                condition_field, condition_value = condition_clause.split("=")
-                condition_field = condition_field.strip()
-                condition_value = condition_value.strip().strip("'")
+                table_name = tokens[2]
 
-                # Convert condition value type if necessary
-                for record in current_db[table_name]:
-                    if condition_field in record:
-                        if isinstance(record[condition_field], int):
-                            condition_value = int(condition_value)
-                        elif isinstance(record[condition_field], float):
-                            condition_value = float(condition_value)
-                        break  # Stop checking after the first record
+                # Ensure table exists
+                if table_name not in current_db:
+                    return f"Table '{table_name}' does not exist."
 
-                # Remove matching records
-                original_count = len(current_db[table_name])
-                current_db[table_name] = [record for record in current_db[table_name] if record.get(condition_field) != condition_value]
-
-                # Save and return response
-                if len(current_db[table_name]) < original_count:
+                # Case 2a: Exclude all records from the table (No WHERE Clause)
+                if len(tokens) == 3:
+                    current_db[table_name] = []  # Clear all records but keep the table
                     save_db()
-                    return f"Voided {original_count - len(current_db[table_name])} record(s) from '{table_name}'."
-                else:
-                    return "No matching records found."
+                    return f"All records excluded from '{table_name}'."
 
-        return "Syntax error. Use: VOID table_name; OR VOID FROM table_name WHERE condition;"
+                # Case 2b: Exclude specific records using WHERE condition
+                if len(tokens) > 3 and tokens[3].lower() == "where":
+                    if len(tokens) < 6 or "=" not in " ".join(tokens[4:]):
+                        return "Syntax error in WHERE clause. Expected format: EXCLUDE FROM table_name WHERE field = value;"
+
+                    # Extract condition clause
+                    condition_clause = " ".join(tokens[4:])
+                    condition_field, condition_value = condition_clause.split("=")
+                    condition_field = condition_field.strip()
+                    condition_value = condition_value.strip().strip("'")
+
+                    # Convert condition value type if necessary
+                    for record in current_db[table_name]:
+                        if condition_field in record:
+                            if isinstance(record[condition_field], int):
+                                condition_value = int(condition_value)
+                            elif isinstance(record[condition_field], float):
+                                condition_value = float(condition_value)
+                            break  # Stop checking after the first record
+
+                    # Remove matching records
+                    original_count = len(current_db[table_name])
+                    current_db[table_name] = [record for record in current_db[table_name] if record.get(condition_field) != condition_value]
+
+                    # Save and return response
+                    if len(current_db[table_name]) < original_count:
+                        save_db()
+                        return f"Excluded {original_count - len(current_db[table_name])} record(s) from '{table_name}'."
+                    else:
+                        return "No matching records found."
+
+            return "Syntax error. Use: EXCLUDE table_name; OR EXCLUDE FROM table_name WHERE condition;"
+
 
 
     elif action == "delete":

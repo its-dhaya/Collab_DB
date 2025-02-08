@@ -21,7 +21,7 @@ make users
 //data insertion 
 insert table_name {"key":"value"}
 //example
-insert users {"name":"John", "age":"30","email":"john@example.com"}
+inclue users {"name":"John", "age":"30","email":"john@example.com"}
 
 
 //get data
@@ -37,13 +37,13 @@ delete field_name from table_name where condition
 delete name from users where age=30
 
 //void which similar to drop
-void from table_name where condition
-void from table_name 
-void  table_name
+exclude from table_name where condition
+exclude from table_name 
+exclude  table_name
 //example
-void from users where name = John
-void from users
-void users
+exclude from users where name = John
+exclude from users
+exclude users
 
 //update 
 update table_name set field_name = new_value where condition
@@ -54,6 +54,12 @@ update users set name = "Bob" where age=30
 count table_name
 //example
 count users
+
+//delete database
+remove database_name 
+
+//exiting current database
+//exit database_name
 
 //exiting the simpledb
 exit
