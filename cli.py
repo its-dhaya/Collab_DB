@@ -1,6 +1,10 @@
 import os
 import json
 import shutil
+import csv
+import re
+import tkinter as tk
+from tkinter import filedialog
 
 DB_FOLDER = "databases"
 os.makedirs(DB_FOLDER, exist_ok=True)
@@ -136,9 +140,11 @@ def process_command(command):
         save_db()
         return f"Table '{table_name}' created successfully."
 
+
+
     elif action == "include":
         if len(tokens) < 3:
-            return "Syntax error. Usage: INCLUDE table_name [{data1}, {data2}, ...];"
+            return "Syntax error. Usage: INCLUDE table_name [{key: value, ...}, {key: value, ...}];"
         
         table_name = tokens[1]
         data_block = command.split("[", 1)[-1].split("]", 1)[0]  # Extract data inside [ ... ]
@@ -147,15 +153,35 @@ def process_command(command):
             if not data_block.strip():
                 return "Empty data provided."
 
-            records = json.loads(f"[{data_block}]")  # Convert to a list of dictionaries
+            # Convert unquoted keys and values to valid JSON format
+            def fix_json_format(data):
+                # Add quotes around keys and string values
+                data = re.sub(r'([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', data)  # Keys
+                data = re.sub(r':\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*([},])', r':"\1"\2', data)  # String values
+                return data
 
-            if not isinstance(records, list):
+            fixed_data = fix_json_format(data_block)
+            raw_records = f"[{fixed_data}]"
+            parsed_records = []
+
+            # Parse and check for duplicate keys in each individual object
+            for obj in json.loads(raw_records, object_pairs_hook=lambda pairs: pairs):
+                seen_keys = set()
+                obj_dict = {}
+                for key, value in obj:
+                    if key in seen_keys:
+                        return f"Error: Duplicate key '{key}' found within a JSON object."
+                    seen_keys.add(key)
+                    obj_dict[key] = value
+                parsed_records.append(obj_dict)
+
+            if not isinstance(parsed_records, list):
                 return "Invalid format. Expected an array of JSON objects."
 
             if table_name in current_db:
                 inserted_ids = []
 
-                for record in records:
+                for record in parsed_records:
                     if isinstance(record, dict):  
                         # Auto-increment ID
                         _id_counter[table_name] += 1
@@ -424,16 +450,56 @@ def process_command(command):
             return f"Tables: {', '.join(table_names)}"
         else:
             return "No tables found."
+        
 
-            # Save if any records were modified
-    if modified_count > 0:
-        save_db()
-        if len(tokens) > 4:
-            return f"Deleted field '{field_name}' from {modified_count} record(s) in '{table_name}'."
-        else:
-            return f"Deleted {modified_count} record(s) from '{table_name}'."
-    else:
-        return "No records matched the condition or field not found."
+
+    elif action == "export":
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+
+        # Ask user to select file format
+        file_path = filedialog.asksaveasfilename(
+            defaultextension="",
+            filetypes=[("JSON files", "*.json"), ("CSV files", "*.csv")],
+            title="Save Database As"
+        )
+
+        if not file_path:  # If the user cancels
+            return "Export canceled."
+
+        try:
+            if file_path.endswith(".json"):  # Export as JSON
+                with open(file_path, "w", encoding="utf-8") as f:
+                    json.dump(current_db, f, indent=4)
+                return f"✅ Database successfully exported as JSON! File saved at: {file_path}"
+
+            elif file_path.endswith(".csv"):  # Export as CSV
+                with open(file_path, "w", newline="", encoding="utf-8") as csv_file:
+                    writer = csv.writer(csv_file)
+
+                    if isinstance(current_db, dict):  # Ensure valid structure
+                        for table_name, records in current_db.items():
+                            if isinstance(records, list) and records:  # Ensure it's a list of dicts
+                                writer.writerow([f"Table: {table_name}"])  # Write table name
+                                writer.writerow(records[0].keys())  # Column headers
+
+                                for record in records:
+                                    writer.writerow(record.values())  # Row values
+
+                                writer.writerow([])  # Blank line for separation
+                    else:
+                        return "❌ Error: Invalid database structure for CSV export."
+
+                return f"✅ Database successfully exported as CSV! File saved at: {file_path}"
+
+            else:
+                return "❌ Error: Unsupported file format."
+
+        except Exception as e:
+            return f"❌ Error exporting database: {e}"
+
+    return f"Error exporting database: {e}"
+
 
 def cli():
     print("SimpleDB CLI. Type 'exit' to quit.")
