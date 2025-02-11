@@ -1,0 +1,34 @@
+{
+    "students": [
+        {
+            "id": 1739028833139,
+            "name": "elan ",
+            "age": "21",
+            "course": "cse"
+        },
+        {
+            "id": 1739201271938,
+            "name": "kidoo",
+            "age": "22",
+            "course": "it"
+        },
+        {
+            "name": "neel",
+            "age": 20,
+            "course": "cse",
+            "id": 1739201271939
+        },
+        {
+            "id": 1739204335062,
+            "name": "DHIVAHAR V",
+            "age": "20",
+            "course": "it"
+        },
+        {
+            "name": "dhaya",
+            "age": 20,
+            "course": "cse",
+            "id": 1739204335063
+        }
+    ]
+}

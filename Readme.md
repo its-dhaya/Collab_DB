@@ -19,9 +19,9 @@ make table_name
 make users
 
 //data insertion 
-insert table_name {"key":"value"}
+include table_name {"key":"value"}
 //example
-inclue users {"name":"John", "age":"30","email":"john@example.com"}
+include users [{"name":"John", "age":"30","email":"john@example.com"}]
 
 
 //get data

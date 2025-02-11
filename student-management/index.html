@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Management</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; }
+        table { width: 60%; margin: auto; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid black; padding: 10px; }
+        button { margin: 5px; padding: 5px 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>Student Management System</h2>
+
+    <form id="studentForm">
+        <input type="text" id="name" placeholder="Name" required>
+        <input type="number" id="age" placeholder="Age" required>
+        <input type="text" id="course" placeholder="Course" required>
+        <button type="submit">Add Student</button>
+    </form>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Age</th>
+                <th>Course</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="studentList"></tbody>
+    </table>
+
+    <script>
+        const apiUrl = "http://localhost:5000/students";
+
+        async function fetchStudents() {
+            const response = await fetch(apiUrl);
+            const students = await response.json();
+            const studentList = document.getElementById("studentList");
+
+            studentList.innerHTML = students.map(student => `
+                <tr>
+                    <td>${student.id}</td>
+                    <td>${student.name}</td>
+                    <td>${student.age}</td>
+                    <td>${student.course}</td>
+                    <td>
+                        <button onclick="deleteStudent(${student.id})">Delete</button>
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        document.getElementById("studentForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const name = document.getElementById("name").value;
+            const age = document.getElementById("age").value;
+            const course = document.getElementById("course").value;
+
+            await fetch(apiUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, age, course })
+            });
+
+            document.getElementById("studentForm").reset();
+            fetchStudents();
+        });
+
+        async function deleteStudent(id) {
+            await fetch(`${apiUrl}/${id}`, { method: "DELETE" });
+            fetchStudents();
+        }
+
+        fetchStudents();
+    </script>
+
+</body>
+</html>
