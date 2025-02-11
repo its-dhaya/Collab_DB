@@ -1,10 +1,17 @@
 import os
 import json
 import shutil
+<<<<<<< HEAD:student-management/cli.py
 import re
 import tkinter as tk
 from tkinter import filedialog
 import csv
+=======
+import csv
+import re
+import tkinter as tk
+from tkinter import filedialog
+>>>>>>> 0590f186fd4c53521bce3156adeb3373e28045c7:cli.py
 
 
 current_db = None
@@ -497,7 +504,10 @@ def process_command(command):
             return f"❌ Error exporting database: {e}"
 
     return f"Error exporting database: {e}"
+<<<<<<< HEAD:student-management/cli.py
 
+=======
+>>>>>>> 0590f186fd4c53521bce3156adeb3373e28045c7:cli.py
 
 
 def cli():
